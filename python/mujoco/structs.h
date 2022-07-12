@@ -512,6 +512,8 @@ class MjStructList<raw::MjContact> : public StructListBase<raw::MjContact> {
   X(int, geom2);
   X(int, exclude);
   X(int, efc_address);
+  X(int, reduce);
+  X(int, cluster);
 #undef X
 
  protected:

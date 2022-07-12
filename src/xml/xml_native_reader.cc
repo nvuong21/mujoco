@@ -56,12 +56,13 @@ static const char* MJCF[nMJCF][mjXATTRNUM] = {
             "inttotal", "inteval", "tolrange"},
     {">"},
 
-    {"option", "*", "22",
+    {"option", "*", "23",
         "timestep", "apirate", "impratio", "tolerance", "noslip_tolerance", "mpr_tolerance",
         "gravity", "wind", "magnetic", "density", "viscosity",
         "o_margin", "o_solref", "o_solimp",
         "integrator", "collision", "cone", "jacobian",
-        "solver", "iterations", "noslip_iterations", "mpr_iterations"},
+        "solver", "iterations", "noslip_iterations", "mpr_iterations",
+        "reduce_contact"},
     {"<"},
         {"flag", "?", "17", "constraint", "equality", "frictionloss", "limit", "contact",
             "passive", "gravity", "clampctrl", "warmstart",
@@ -851,6 +852,7 @@ void mjXReader::Option(XMLElement* section, mjOption* opt) {
   ReadAttrInt(section, "iterations", &opt->iterations);
   ReadAttrInt(section, "noslip_iterations", &opt->noslip_iterations);
   ReadAttrInt(section, "mpr_iterations", &opt->mpr_iterations);
+  ReadAttrInt(section, "reduce_contact", &opt->reduce_contact);
 
   // read disable sub-element
   XMLElement* elem = FindSubElem(section, "flag");

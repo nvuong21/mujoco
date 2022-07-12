@@ -34,8 +34,19 @@ int mj_broadphase(const mjModel* m, mjData* d, int* bodypair, int maxpair);
 
 // test two geoms for collision, apply filters, add to contact list
 //  flg_user disables filters and uses usermargin
+// this function calls mj_collideGeomsSkip
 void mj_collideGeoms(const mjModel* m, mjData* d,
                      int g1, int g2, int flg_user, mjtNum usermargin);
+
+// test two geoms for collision, apply filters, but not add to contact list yet
+int mj_collideGeomsSkip(const mjModel* m, mjData* d, mjContact* con,
+                     int g1, int g2, int flg_user, mjtNum usermargin);
+
+// add a list of contacts to mjData
+void mj_addContacts(const mjModel* m, mjData* d, const mjContact* con, int ncon);
+
+// perform contact clustering on a list of contacts
+int mj_clusterContacts(mjData* d, mjContact* res, const mjContact* con, int ncon);
 
 // number of possible collisions based on fitlers and geom types
 int mj_contactFilter(int type1, int contype1, int conaffinity1, int weldbody1, int weldparent1,

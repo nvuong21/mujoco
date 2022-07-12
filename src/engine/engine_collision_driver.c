@@ -16,7 +16,9 @@
 
 #include <stddef.h>
 #include <string.h>
+#include <stdio.h>  // TODO remove later
 
+#include <engine/engine_support.h> // TODO remove later
 #include <mujoco/mjdata.h>
 #include <mujoco/mjmodel.h>
 #include "engine/engine_callback.h"
@@ -31,6 +33,12 @@
 #include "engine/engine_util_misc.h"
 #include "engine/engine_util_solve.h"
 #include "engine/engine_util_spatial.h"
+#include "kmeans.h"
+
+// Kmeans clustering parameter
+#define MAX_KMEANS_CLUSTER 4
+#define KMEANS_DIMENSION 3 // dimensions of each vector in the cluster
+#define MAX_KMEANS_ITERATION 5
 
 // table of pair-wise collision functions
 mjfCollision mjCOLLISIONFUNC[mjNGEOMTYPES][mjNGEOMTYPES] = {
@@ -116,8 +124,13 @@ void mj_collision(const mjModel* m, mjData* d) {
 
       // test all geom pairs within this body pair
       if (m->body_geomnum[b1] && m->body_geomnum[b2]) {
+        mjContact total_con[m->nconmax];  // the list of contacts between two bodies
+        int total_ncon=0;
         for (g1=m->body_geomadr[b1]; g1<m->body_geomadr[b1]+m->body_geomnum[b1]; g1++) {
           for (g2=m->body_geomadr[b2]; g2<m->body_geomadr[b2]+m->body_geomnum[b2]; g2++) {
+            // initialize contact list
+            // mjContact con[mjMAXCONPAIR];
+            int ncon = 0;
             // merged: make sure geom pair is not repeated
             if (merged) {
               // find matching pair
@@ -132,14 +145,43 @@ void mj_collision(const mjModel* m, mjData* d) {
 
               // not found: test
               if (!found) {
-                mj_collideGeoms(m, d, g1, g2, 0, 0);
+                // mj_collideGeoms(m, d, g1, g2, 0, 0);
+                ncon = mj_collideGeomsSkip(m, d, total_con + total_ncon, g1, g2, 0, 0);
               }
             }
 
+
             // not merged: always test
             else {
-              mj_collideGeoms(m, d, g1, g2, 0, 0);
+              // mj_collideGeoms(m, d, g1, g2, 0, 0);
+              ncon = mj_collideGeomsSkip(m, d, total_con + total_ncon, g1, g2, 0, 0);
             }
+            // mj_addContacts(m, d, con, ncon);
+            // add to total_con
+            total_ncon += ncon;
+          }
+        }
+        // check whether to do contact clustering
+        if (m->opt.reduce_contact){
+        // perform contact clustering
+          // TODO what are other cases we don't need clustering?
+          if (total_ncon > 0){
+            const char* b1_name = mj_id2name(m, mjOBJ_BODY, b1);
+            const char* b2_name = mj_id2name(m, mjOBJ_BODY, b2);
+            // printf("\nDetected %d contact between body %s and %s\n", total_ncon, b1_name, b2_name);        
+            // printf("perform contact clustering for body %s and %s\n", b1_name, b2_name);
+            // TODO maybe the maximum size can be set smaller
+            mjContact cluster_con[m->nconmax];
+            int ncon_cluster;
+            ncon_cluster = mj_clusterContacts(d, cluster_con, total_con, total_ncon);
+            // printf("Number of contact after clustering %d\n", ncon_cluster);
+            // TODO add new contact list from contact clustering
+            mj_addContacts(m, d, cluster_con, ncon_cluster);
+          }
+        }
+        else {
+          if (total_ncon > 0){
+            mj_addContacts(m, d, total_con, total_ncon);
           }
         }
       }
@@ -302,6 +344,11 @@ static int can_collide(const mjModel* m, int b) {
   // none found
   return 0;
 }
+
+
+
+// TODO
+static void reduce_contact(kmeansCluster* cluster){}
 
 
 
@@ -496,9 +543,15 @@ static mjtNum plane_geom(const mjModel* m, mjData* d, int g1, int g2) {
 // test two geoms for collision, apply filters, add to contact list
 //  flg_user disables filters and uses usermargin
 void mj_collideGeoms(const mjModel* m, mjData* d, int g1, int g2, int flg_user, mjtNum usermargin) {
+  mjContact con[mjMAXCONPAIR];
+  int ncon = mj_collideGeomsSkip(m, d, con, g1, g2, flg_user, usermargin);
+  mj_addContacts(m, d, con, ncon);
+}
+
+int mj_collideGeomsSkip(const mjModel* m, mjData* d, mjContact* con, int g1, int g2, int flg_user, mjtNum usermargin) {
   int i, num, type1, type2, b1, b2, weld1, weld2, condim;
   mjtNum margin, gap, mix, friction[5], solref[mjNREF], solimp[mjNIMP];
-  mjContact con[mjMAXCONPAIR];
+  // mjContact con[mjMAXCONPAIR];
   int ipair = (g2<0 ? g1 : -1);
 
   // get explicit geom ids from pair
@@ -524,7 +577,7 @@ void mj_collideGeoms(const mjModel* m, mjData* d, int g1, int g2, int flg_user, 
 
   // return if no collision function
   if (!mjCOLLISIONFUNC[type1][type2]) {
-    return;
+    return 0;
   }
 
   // apply filters if not predefined pair and not flg_user
@@ -532,7 +585,7 @@ void mj_collideGeoms(const mjModel* m, mjData* d, int g1, int g2, int flg_user, 
     // user filter if defined
     if (mjcb_contactfilter) {
       if (mjcb_contactfilter(m, d, g1, g2)) {
-        return;
+        return 0;
       }
     }
 
@@ -543,7 +596,7 @@ void mj_collideGeoms(const mjModel* m, mjData* d, int g1, int g2, int flg_user, 
                type2, m->geom_contype[g2], m->geom_conaffinity[g2],
                weld2, m->body_weldid[m->body_parentid[weld2]],
                !mjDISABLED(mjDSBL_FILTERPARENT) && weld1 && weld2)) {
-      return;
+      return 0;
     }
   }
 
@@ -580,17 +633,17 @@ void mj_collideGeoms(const mjModel* m, mjData* d, int g1, int g2, int flg_user, 
   if (m->geom_rbound[g1]>0 && m->geom_rbound[g2]>0 &&
       (mju_dist3(d->geom_xpos+3*g1, d->geom_xpos+3*g2) >
        m->geom_rbound[g1] + m->geom_rbound[g2] + margin)) {
-    return;
+    return 0;
   }
 
   // plane : bounding sphere filter
   if (m->geom_type[g1]==mjGEOM_PLANE && m->geom_rbound[g2]>0
       && plane_geom(m, d, g1, g2) > margin+m->geom_rbound[g2]) {
-      return;
+      return 0;
   }
   if (m->geom_type[g2]==mjGEOM_PLANE && m->geom_rbound[g1]>0
       && plane_geom(m, d, g2, g1) > margin+m->geom_rbound[g1]) {
-      return;
+      return 0;
   }
 
   // call collision detector to generate contacts
@@ -598,7 +651,7 @@ void mj_collideGeoms(const mjModel* m, mjData* d, int g1, int g2, int flg_user, 
 
   // no contacts from near-phase
   if (!num) {
-    return;
+    return 0;
   }
 
   // check number of contacts, SHOULD NOT OCCUR
@@ -751,13 +804,27 @@ void mj_collideGeoms(const mjModel* m, mjData* d, int g1, int g2, int flg_user, 
     con[i].efc_address = -1;
     con[i].mu = 0;
     mju_zero(con[i].H, 36);
+
+    // computed by contact reduction
+    con[i].reduce=0;
+    con[i].cluster=0;
+
+    // add to mjData, abort if too many contacts
+    // if (mj_addContact(m, d, con + i)) {
+    //   return;
+    // }
+  }
+  return num;
+}
+
+void mj_addContacts(const mjModel* m, mjData* d, const mjContact* con, int ncon){
+  for (int i=0; i<ncon; i++) {
     // add to mjData, abort if too many contacts
     if (mj_addContact(m, d, con + i)) {
       return;
     }
   }
 }
-
 
 
 // filter contacts: 1- discard, 0- proceed
@@ -781,4 +848,63 @@ int mj_contactFilter(int type1, int contype1, int conaffinity1, int weldbody1, i
 
   // all tests passed
   return 0;
+}
+
+int mj_clusterContacts(mjData* d, mjContact* res, const mjContact* con, int ncon){
+  // just copy
+  for (size_t i = 0; i < ncon; i++)
+  {
+    res[i]=*(con + i);
+  }
+  // return if number of contact is smaller than number of cluster
+  if (ncon < MAX_KMEANS_CLUSTER){
+    return ncon;
+  }
+
+  // initialize
+  kmeansCluster cluster;
+  cluster.k=MAX_KMEANS_CLUSTER;
+  cluster.pnt_N = ncon;
+  cluster.pnt_dim = KMEANS_DIMENSION;
+  mjMARKSTACK;
+  cluster.pnt_loc = mj_stackAlloc(d, cluster.pnt_N*cluster.pnt_dim);
+  cluster.pnt_cluster = (int*) mj_stackAlloc(d, cluster.pnt_N*cluster.pnt_dim);
+  cluster.centers = mj_stackAlloc(d, cluster.k*cluster.pnt_dim);
+
+  for (size_t i = 0; i < ncon; i++)
+  {
+    mju_copy3(cluster.pnt_loc+i*cluster.pnt_dim, con[i].frame);   
+    // verification
+    // printf("cluster.pnt_loc[%d:%d] = [%.2f, %.2f, %.2f], con[%d].frame = [%.2f, %.2f, %.2f] \n", 
+    //       i*cluster.pnt_dim, (i+1)*cluster.pnt_dim,
+    //       *(cluster.pnt_loc + i*cluster.pnt_dim),
+    //       *(cluster.pnt_loc + i*cluster.pnt_dim+1),
+    //       *(cluster.pnt_loc + i*cluster.pnt_dim+2),
+    //       i, con[i].frame[0], con[i].frame[1], con[i].frame[2]);
+  }
+
+  // initialize center of cluster
+  // mj_initializeKmeansPP(d, &cluster);
+  mj_initializeKmeansRandom(d, &cluster);
+  printf("number of contact %d\n", ncon);
+  // printf("initialized cluster = [\n");
+  // for (size_t i = 0; i < cluster.k; i++)
+  // {
+  //   printf_3d(cluster.centers + i * cluster.pnt_dim);
+  // }
+
+  // initialize_cluster(input)
+  // perform kmeans clustering
+  mj_kmeans(&cluster, MAX_KMEANS_ITERATION);
+  // reduce contacts from clustering result and add to mjdata
+  reduce_contact(&cluster);
+  // printf("Number of contacts after clustering ")
+ 
+  if (cluster.result == KMEANS_ERROR){
+    // printf("Kmeans returned Error\n");
+  }
+
+  mjFREESTACK;
+
+  return ncon;
 }

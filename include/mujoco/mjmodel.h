@@ -409,6 +409,7 @@ struct mjOption_ {                // physics options
   int mpr_iterations;             // maximum number of MPR solver iterations
   int disableflags;               // bit flags for disabling standard features
   int enableflags;                // bit flags for enabling optional features
+  int reduce_contact;            // whether to perform contact clustering
 };
 typedef struct mjOption_ mjOption;
 

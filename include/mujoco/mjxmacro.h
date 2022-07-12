@@ -41,7 +41,8 @@
     X( int,     noslip_iterations ) \
     X( int,     mpr_iterations    ) \
     X( int,     disableflags      ) \
-    X( int,     enableflags       )
+    X( int,     enableflags       ) \
+    X( int,     reduce_contact   )
 
 
 #define MJOPTION_SCALARS            \

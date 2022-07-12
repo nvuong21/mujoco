@@ -520,7 +520,9 @@ MjContactList::MjStructList(raw::MjContact* ptr, int num, py::handle owner)
       X(int, geom1),
       X(int, geom2),
       X(int, exclude),
-      X(int, efc_address) {}
+      X(int, efc_address),
+      X(int, reduce),
+      X(int, cluster) {}
 #undef X
 #undef XN
 
@@ -541,7 +543,9 @@ MjContactList::MjStructList(MjContactList& other, py::slice slice)
       X(int, geom1),
       X(int, geom2),
       X(int, exclude),
-      X(int, efc_address) {}
+      X(int, efc_address),
+      X(int, reduce),
+      X(int, cluster) {}
 #undef X
 
 // ==================== MJDATA =================================================
@@ -1673,6 +1677,8 @@ This is useful for example when the MJB is not available as a file on disk.)"));
   X(geom2);
   X(exclude);
   X(efc_address);
+  X(reduce);
+  X(cluster);
 #undef X
 
 #define X(var) DefinePyArray(mjContact, #var, &MjContactWrapper::var)
@@ -1706,6 +1712,8 @@ This is useful for example when the MJB is not available as a file on disk.)"));
   X(int, geom2);
   X(int, exclude);
   X(int, efc_address);
+  X(int, reduce);
+  X(int, cluster);
 #undef X
 
   // ==================== MJDATA ===============================================

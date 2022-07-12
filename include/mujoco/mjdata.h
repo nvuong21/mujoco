@@ -86,6 +86,10 @@ struct mjContact_ {               // result of collision detection functions
 
   // address computed by mj_instantiateContact
   int efc_address;                // address in efc; -1: not included, -2-i: distance constraint i
+
+  // attrs set by contact reduction algorithm
+  int reduce;                     // 0: not reduced, 1: reduced
+  int cluster;                    // the id of cluster that this contact belongs to
 };
 typedef struct mjContact_ mjContact;
 

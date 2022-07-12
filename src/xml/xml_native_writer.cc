@@ -698,6 +698,7 @@ void mjXWriter::Option(XMLElement* root) {
   WriteAttrInt(section, "iterations", model->option.iterations, opt.iterations);
   WriteAttrInt(section, "noslip_iterations", model->option.noslip_iterations, opt.noslip_iterations);
   WriteAttrInt(section, "mpr_iterations", model->option.mpr_iterations, opt.mpr_iterations);
+  WriteAttrInt(section, "reduce_contact", model->option.reduce_contact, opt.reduce_contact);
 
   // write disable/enable flags if any of them are set; invert while writing
   if (model->option.disableflags || model->option.enableflags) {
