@@ -29,6 +29,7 @@
     X( mjtNum,  density          )  \
     X( mjtNum,  viscosity        )  \
     X( mjtNum,  o_margin         )  \
+    X( mjtNum,     kmeans_scale_normal   )
 
 
 #define MJOPTION_INTS               \
@@ -42,7 +43,9 @@
     X( int,     mpr_iterations    ) \
     X( int,     disableflags      ) \
     X( int,     enableflags       ) \
-    X( int,     reduce_contact   )
+    X( int,     reduce_contact   )  \
+    X( int,     kmeans_iterations   )  \
+    X( int,     kmeans_cluster   )
 
 
 #define MJOPTION_SCALARS            \

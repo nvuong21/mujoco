@@ -830,7 +830,8 @@ void mj_instantiateContact(const mjModel* m, mjData* d) {
 
   // find contacts to be included
   for (int i=0; i<ncon; i++) {
-    if (!d->contact[i].exclude) {
+    if (!d->contact[i].exclude && !d->contact[i].reduce) {
+    // if (!d->contact[i].exclude) {
       // get pointer to this contact, info
       con = d->contact + i;
       dim = con->dim;

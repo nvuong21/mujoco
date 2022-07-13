@@ -38,15 +38,19 @@ int mj_broadphase(const mjModel* m, mjData* d, int* bodypair, int maxpair);
 void mj_collideGeoms(const mjModel* m, mjData* d,
                      int g1, int g2, int flg_user, mjtNum usermargin);
 
-// test two geoms for collision, apply filters, but not add to contact list yet
-int mj_collideGeomsSkip(const mjModel* m, mjData* d, mjContact* con,
-                     int g1, int g2, int flg_user, mjtNum usermargin);
+// NOTE remove these functions, process directly data.contact
+// // test two geoms for collision, apply filters, but not add to contact list yet
+// int mj_collideGeomsSkip(const mjModel* m, mjData* d, mjContact* con,
+//                      int g1, int g2, int flg_user, mjtNum usermargin);
 
-// add a list of contacts to mjData
-void mj_addContacts(const mjModel* m, mjData* d, const mjContact* con, int ncon);
+// // add a list of contacts to mjData
+// void mj_addContacts(const mjModel* m, mjData* d, const mjContact* con, int ncon);
 
 // perform contact clustering on a list of contacts
-int mj_clusterContacts(mjData* d, mjContact* res, const mjContact* con, int ncon);
+// cluster a set of contacts in d->contact from start_idx to end_idx.
+// If end_idx=-1 then cluster from start to data->ncon
+void mj_clusterContacts(const mjModel* m, mjData* d, int start_idx, int end_idx);
+// int mj_clusterContacts(mjData* d, mjContact* res, const mjContact* con, int ncon);
 
 // number of possible collisions based on fitlers and geom types
 int mj_contactFilter(int type1, int contype1, int conaffinity1, int weldbody1, int weldparent1,

@@ -128,6 +128,10 @@ void mj_defaultOption(mjOption* opt) {
   opt->disableflags       = 0;
   opt->enableflags        = 0;
   opt->reduce_contact    = 0;
+  // kmeans clustering
+  opt->kmeans_iterations = 10;
+  opt->kmeans_cluster = 8;
+  opt->kmeans_scale_normal = 0.1;
 }
 
 

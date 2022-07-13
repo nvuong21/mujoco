@@ -26,9 +26,81 @@ typedef struct kmeansCluster
 
 } kmeansCluster;
 
+typedef struct kmeansConfig
+{
+  int max_ite;
+  // mjtNum *weights;
+} kmeansConfig;
+
+// distance function
+// typedef void (*distance_fn)(mjtNum* vec1, mjtNum* vec2, int dim);
+
 // TODO
-static int label_from_centers(kmeansCluster* cluster){}
-static void centers_from_label(kmeansCluster* cluster){}
+static int
+label_from_centers(kmeansCluster *cluster)
+{
+  int changed = 0;
+  for (size_t i = 0; i < cluster->pnt_N; i++)
+  {
+    int closest = -1;
+    mjtNum closest_dist = mjMAXVAL;
+    for (size_t j = 0; j < cluster->k; j++)
+    {
+      // mjtNum dist=mju_sub
+      mjtNum vec[cluster->pnt_dim];
+      mju_sub(vec, cluster->centers + j * cluster->pnt_dim,
+              cluster->pnt_loc + i * cluster->pnt_dim, cluster->pnt_dim);
+      // // weight
+      // for (size_t k = 0; k < cluster->pnt_dim; k++)
+      // {
+      //   vec[k]*=weights[k];
+      // }
+      
+      mjtNum dist = mju_norm(vec, cluster->pnt_dim);
+      if (dist < closest_dist)
+      {
+        closest_dist = dist;
+        closest = j;
+      }
+    }
+    if (closest != cluster->pnt_cluster[i])
+      changed = 1;
+    cluster->pnt_cluster[i] = closest;
+  }
+  return changed;
+}
+
+static void centers_from_label(kmeansCluster *cluster)
+{
+  // clear value
+  mju_zero(cluster->centers, cluster->pnt_dim * cluster->k);
+
+  mjtNum denom[cluster->k];
+  mju_zero(denom, cluster->k);
+  for (size_t i = 0; i < cluster->pnt_N; i++)
+  {
+    mju_addTo(cluster->centers + cluster->pnt_cluster[i] * cluster->pnt_dim,
+              cluster->pnt_loc + i * cluster->pnt_dim, cluster->pnt_dim);
+    denom[cluster->pnt_cluster[i]] += 1;
+  }
+  for (size_t i = 0; i < cluster->k; i++)
+  {
+    if (denom[i] == 0)
+    {
+      // set to a random point
+      int random_idx = rand() % cluster->pnt_N;
+      mju_copy(cluster->centers + i * cluster->pnt_dim,
+               cluster->pnt_loc + random_idx * cluster->pnt_dim, cluster->pnt_dim);
+    }
+    else
+    {
+      mju_scl(cluster->centers + i * cluster->pnt_dim,
+              cluster->centers + i * cluster->pnt_dim,
+              1 / denom[i], cluster->pnt_dim);
+    }
+  }
+}
+
 // ------------------- utilities
 void printf_3d(const mjtNum *vec)
 {
@@ -55,7 +127,6 @@ void print_array_mjtnum(const mjtNum *arr, int size, const char *name)
   printf("]\n");
 }
 
-
 // initialize cluster from a list of points
 // void initialize_cluster(kmeansCluster cluster, int k, int num_points, const mjtNum *points)
 // {
@@ -67,27 +138,56 @@ void print_array_mjtnum(const mjtNum *arr, int size, const char *name)
 // add points to existing cluster
 // void add_points(kmeansCluster cluster, const mjtNum *point) {}
 
+void mj_getDefaultKmeansConfig(kmeansConfig *config, const kmeansCluster *cluster)
+{
+  config->max_ite = 10;
+  // for (size_t i = 0; i < cluster->pnt_dim; i++)
+  // {
+  //   config->weights[i] = 1;
+  // }
+}
+
 // perform kmeans_clustering
 // the init cluster should be initialized via `initialize_cluster`
+// weight is a vector with same dimension as cluster->pnt_dim used to calculate distance
+// between two points in cluster
+// augment p' = [weight[0]*p[0], weight[1]*p[1], ... ]
 // TODO initialize cluster?
-void mj_kmeans(kmeansCluster *cluster, int max_ite)
+void mj_kmeans(kmeansCluster *cluster, const kmeansConfig* config)
 {
+  // NOTE verification, print out all points in cluster
+  // for (size_t i = 0; i < cluster->pnt_N; i++)
+  // {
+  //   print_array_mjtnum(cluster->pnt_loc + i*cluster->pnt_dim, cluster->pnt_dim, "cluster point");
+  // }
+  
+
   if (cluster->k >= cluster->pnt_N)
   {
     cluster->result = KMEANS_ERROR;
     return;
   }
 
-  for (size_t i = 0; i < max_ite; i++)
+  for (size_t i = 0; i < config->max_ite; i++)
   {
     if (!label_from_centers(cluster))
     {
-      cluster->result=KMEANS_SUCCESS;
+      cluster->result = KMEANS_SUCCESS;
+      // printf("Kmeans terminate successfully after %d iterations\n", i);
       return;
     }
     centers_from_label(cluster);
+    // NOTE verification
+    // printf("Iteration %d, Centers: \n", i);
+    // for (size_t j = 0; j < cluster->k; j++)
+    // {
+    //   char name[50];
+    //   snprintf(name, 50, "center%d", j);
+    //   print_array_mjtnum(cluster->centers + j * cluster->pnt_dim, cluster->pnt_dim, name);
+    // }
+    // print_array_int(cluster->pnt_cluster, cluster->pnt_N, "pnt_cluster");
   }
-  cluster->result=KMEANS_SUCCESS;
+  cluster->result = KMEANS_SUCCESS;
 }
 
 void mj_initializeKmeansRandom(mjData *d, kmeansCluster *cluster)
@@ -169,11 +269,10 @@ void mj_initializeKmeansPP(mjData *d, kmeansCluster *cluster)
              sorted_contact_normals + id * dim, dim);
   }
   // NOTE verification
-  printf("initialized cluster = [\n");
-  for (size_t i = 0; i < k; i++)
-  {
-    printf_3d(cluster->centers + i * dim);
-  }
+  // printf("initialized cluster = [\n");
+  // for (size_t i = 0; i < k; i++)
+  // {
+  //   printf_3d(cluster->centers + i * dim);
+  // }
   mjFREESTACK;
 }
-

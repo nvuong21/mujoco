@@ -410,6 +410,10 @@ struct mjOption_ {                // physics options
   int disableflags;               // bit flags for disabling standard features
   int enableflags;                // bit flags for enabling optional features
   int reduce_contact;            // whether to perform contact clustering
+  // clustering algorithm
+  int kmeans_iterations;
+  int kmeans_cluster;              // number of clusters
+  mjtNum kmeans_scale_normal;      // in (0, 1), used to scale down normal components for each contact during kmeans
 };
 typedef struct mjOption_ mjOption;
 

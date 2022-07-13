@@ -699,6 +699,9 @@ void mjXWriter::Option(XMLElement* root) {
   WriteAttrInt(section, "noslip_iterations", model->option.noslip_iterations, opt.noslip_iterations);
   WriteAttrInt(section, "mpr_iterations", model->option.mpr_iterations, opt.mpr_iterations);
   WriteAttrInt(section, "reduce_contact", model->option.reduce_contact, opt.reduce_contact);
+  WriteAttrInt(section, "kmeans_iterations", model->option.kmeans_iterations, opt.kmeans_iterations);
+  WriteAttrInt(section, "kmeans_cluster", model->option.kmeans_cluster, opt.kmeans_cluster);
+  WriteAttr(section, "kmeans_scale_normal", 1, &model->option.kmeans_scale_normal, &opt.kmeans_scale_normal);
 
   // write disable/enable flags if any of them are set; invert while writing
   if (model->option.disableflags || model->option.enableflags) {
