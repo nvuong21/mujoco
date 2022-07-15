@@ -55,7 +55,7 @@ label_from_centers(kmeansCluster *cluster)
       // {
       //   vec[k]*=weights[k];
       // }
-      
+
       mjtNum dist = mju_norm(vec, cluster->pnt_dim);
       if (dist < closest_dist)
       {
@@ -85,6 +85,7 @@ static void centers_from_label(kmeansCluster *cluster)
   }
   for (size_t i = 0; i < cluster->k; i++)
   {
+    // TODO maybe remove this cluster?
     if (denom[i] == 0)
     {
       // set to a random point
@@ -153,14 +154,13 @@ void mj_getDefaultKmeansConfig(kmeansConfig *config, const kmeansCluster *cluste
 // between two points in cluster
 // augment p' = [weight[0]*p[0], weight[1]*p[1], ... ]
 // TODO initialize cluster?
-void mj_kmeans(kmeansCluster *cluster, const kmeansConfig* config)
+void mj_kmeans(kmeansCluster *cluster, const kmeansConfig *config)
 {
   // NOTE verification, print out all points in cluster
   // for (size_t i = 0; i < cluster->pnt_N; i++)
   // {
   //   print_array_mjtnum(cluster->pnt_loc + i*cluster->pnt_dim, cluster->pnt_dim, "cluster point");
   // }
-  
 
   if (cluster->k >= cluster->pnt_N)
   {
@@ -222,57 +222,108 @@ void mj_initializeKmeansRandom(mjData *d, kmeansCluster *cluster)
   }
 }
 
-// TODO need imrpove
+// initialize based on Kmeans++ methods, remove randomness
 void mj_initializeKmeansPP(mjData *d, kmeansCluster *cluster)
 {
-  mjMARKSTACK;
   int N = cluster->pnt_N;
   int dim = cluster->pnt_dim;
   int k = cluster->k;
-  // first sort contact normals based on dot product
-  mjtNum *sorted_contact_normals = mj_stackAlloc(d, N * dim);
-  mju_copy(sorted_contact_normals, cluster->pnt_loc, N * dim);
-  for (size_t i = 1; i < N; i++)
+  // mjtNum dist[N][N];
+  mjtNum min_dist[N];
+  int isCenter[N];
+  // initialize distance array
+  for (size_t i = 0; i < N; i++)
   {
-    // TODO generalize this to a dist function
-    mjtNum max_dot = mju_abs(mju_dot(sorted_contact_normals + (i - 1) * dim,
-                                     sorted_contact_normals + i * dim, dim));
-    int id = i;
-    for (size_t j = i + 1; j < N; j++)
+    min_dist[i] = mjMAXVAL;
+    isCenter[i] = 0;
+    // for (size_t j = 0; j < N; j++)
+    // {
+    //   if (j==i) dist[i][j]=0;
+    //   else dist[i][j]=-1;
+    // }
+  }
+
+  // set the first element to the first center
+  mju_copy(cluster->centers, cluster->pnt_loc, dim);
+  isCenter[0] = 1;
+  // calculate center
+  for (size_t i = 1; i < k; i++)
+  {
+    mjtNum best_dist = 0;
+    int best_idx = 0;
+    for (size_t j = 1; j < N; j++)
     {
-      mjtNum dot = mju_abs(mju_dot(sorted_contact_normals + (i - 1) * dim,
-                                   sorted_contact_normals + j * dim, dim));
-      if (dot > max_dot)
+      // calculate distance to the previous center
+      if (!isCenter[j])
       {
-        max_dot = dot;
-        id = j;
+        mjtNum dvec[dim];
+        mju_sub(dvec, cluster->pnt_loc + j * dim, cluster->centers + (i - 1) * dim, dim);
+        mjtNum d = mju_norm(dvec, dim);
+        // update min dist
+        min_dist[j] = mju_min(min_dist[j], d);
+        if (min_dist[j] > best_dist)
+        {
+          best_dist = min_dist[j];
+          best_idx = j;
+        }
       }
     }
-    // swap
-    mjtNum temp[dim];
-    mju_copy(temp, sorted_contact_normals + id * dim, dim);
-    mju_copy(sorted_contact_normals + id * dim, sorted_contact_normals + i * dim, dim);
-    mju_copy(sorted_contact_normals + i * dim, temp, dim);
+    // store center
+    mju_copy(cluster->centers + i * dim, cluster->pnt_loc + best_idx * dim, dim);
+    isCenter[best_idx] = 1;
   }
-  // NOTE verification
-  // printf("sorted_contact_normal = [\n");
-  // for (size_t i = 0; i < ncon; i++)
-  // {
-  //   printf_3d(sorted_contact_normals+i*3);
-  // }
-  // printf("]\n");
-  // printf("cluter points %d, no clusters %d", N, k);
-  for (size_t i = 0; i < k; i++)
-  {
-    int id = (i * N) / (k);
-    mju_copy(cluster->centers + i * dim,
-             sorted_contact_normals + id * dim, dim);
-  }
-  // NOTE verification
-  // printf("initialized cluster = [\n");
-  // for (size_t i = 0; i < k; i++)
-  // {
-  //   printf_3d(cluster->centers + i * dim);
-  // }
-  mjFREESTACK;
 }
+
+// void mj_initializeKmeansPP(mjData *d, kmeansCluster *cluster)
+// {
+//   mjMARKSTACK;
+//   int N = cluster->pnt_N;
+//   int dim = cluster->pnt_dim;
+//   int k = cluster->k;
+//   // first sort contact normals based on dot product
+//   mjtNum *sorted_contact_normals = mj_stackAlloc(d, N * dim);
+//   mju_copy(sorted_contact_normals, cluster->pnt_loc, N * dim);
+//   for (size_t i = 1; i < N; i++)
+//   {
+//     // TODO generalize this to a dist function
+//     mjtNum max_dot = mju_abs(mju_dot(sorted_contact_normals + (i - 1) * dim,
+//                                      sorted_contact_normals + i * dim, dim));
+//     int id = i;
+//     for (size_t j = i + 1; j < N; j++)
+//     {
+//       mjtNum dot = mju_abs(mju_dot(sorted_contact_normals + (i - 1) * dim,
+//                                    sorted_contact_normals + j * dim, dim));
+//       if (dot > max_dot)
+//       {
+//         max_dot = dot;
+//         id = j;
+//       }
+//     }
+//     // swap
+//     mjtNum temp[dim];
+//     mju_copy(temp, sorted_contact_normals + id * dim, dim);
+//     mju_copy(sorted_contact_normals + id * dim, sorted_contact_normals + i * dim, dim);
+//     mju_copy(sorted_contact_normals + i * dim, temp, dim);
+//   }
+//   // NOTE verification
+//   // printf("sorted_contact_normal = [\n");
+//   // for (size_t i = 0; i < ncon; i++)
+//   // {
+//   //   printf_3d(sorted_contact_normals+i*3);
+//   // }
+//   // printf("]\n");
+//   // printf("cluter points %d, no clusters %d", N, k);
+//   for (size_t i = 0; i < k; i++)
+//   {
+//     int id = (i * N) / (k);
+//     mju_copy(cluster->centers + i * dim,
+//              sorted_contact_normals + id * dim, dim);
+//   }
+//   // NOTE verification
+//   // printf("initialized cluster = [\n");
+//   // for (size_t i = 0; i < k; i++)
+//   // {
+//   //   printf_3d(cluster->centers + i * dim);
+//   // }
+//   mjFREESTACK;
+// }

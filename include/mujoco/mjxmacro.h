@@ -45,6 +45,7 @@
     X( int,     enableflags       ) \
     X( int,     reduce_contact   )  \
     X( int,     kmeans_iterations   )  \
+    X( int,     kmeans_init_random   )  \
     X( int,     kmeans_cluster   )
 
 

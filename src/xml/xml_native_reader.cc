@@ -56,13 +56,14 @@ static const char* MJCF[nMJCF][mjXATTRNUM] = {
             "inttotal", "inteval", "tolrange"},
     {">"},
 
-    {"option", "*", "26",
+    {"option", "*", "27",
         "timestep", "apirate", "impratio", "tolerance", "noslip_tolerance", "mpr_tolerance",
         "gravity", "wind", "magnetic", "density", "viscosity",
         "o_margin", "o_solref", "o_solimp",
         "integrator", "collision", "cone", "jacobian",
         "solver", "iterations", "noslip_iterations", "mpr_iterations",
-        "reduce_contact", "kmeans_iterations", "kmeans_cluster", "kmeans_scale_normal"},
+        "reduce_contact", "kmeans_iterations", "kmeans_cluster", "kmeans_scale_normal",
+        "kmeans_init_random"},
     {"<"},
         {"flag", "?", "17", "constraint", "equality", "frictionloss", "limit", "contact",
             "passive", "gravity", "clampctrl", "warmstart",
@@ -854,6 +855,7 @@ void mjXReader::Option(XMLElement* section, mjOption* opt) {
   ReadAttrInt(section, "mpr_iterations", &opt->mpr_iterations);
   ReadAttrInt(section, "reduce_contact", &opt->reduce_contact);
   ReadAttrInt(section, "kmeans_iterations", &opt->kmeans_iterations);
+  ReadAttrInt(section, "kmeans_init_random", &opt->kmeans_init_random);
   ReadAttrInt(section, "kmeans_cluster", &opt->kmeans_cluster);
   ReadAttr(section, "kmeans_scale_normal", 1, &opt->kmeans_scale_normal, text);
 

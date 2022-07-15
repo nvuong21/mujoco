@@ -130,6 +130,7 @@ void mj_defaultOption(mjOption* opt) {
   opt->reduce_contact    = 0;
   // kmeans clustering
   opt->kmeans_iterations = 10;
+  opt->kmeans_init_random = 0;
   opt->kmeans_cluster = 8;
   opt->kmeans_scale_normal = 0.1;
 }

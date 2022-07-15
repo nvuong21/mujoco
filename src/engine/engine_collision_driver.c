@@ -948,7 +948,7 @@ void mj_clusterContacts(const mjModel* m, mjData* d, int start_idx, int end_idx)
     if (body1 > body2){
       mju_scl(cluster.pnt_loc + (i-start_idx) * cluster.pnt_dim,
               cluster.pnt_loc + (i-start_idx) * cluster.pnt_dim,
-              -1, cluster.pnt_dim);
+              -1, 3);
     }
 
     // verification
@@ -961,8 +961,11 @@ void mj_clusterContacts(const mjModel* m, mjData* d, int start_idx, int end_idx)
   }
 
   // initialize center of cluster
-  // mj_initializeKmeansPP(d, &cluster);
-  mj_initializeKmeansRandom(d, &cluster);
+  if (m->opt.kmeans_init_random)
+    mj_initializeKmeansRandom(d, &cluster);
+  else{
+    mj_initializeKmeansPP(d, &cluster);
+  }
   // printf("number of contact to be clustered %d\n", ncon);
   // printf("initialized cluster = [\n");
   // for (size_t i = 0; i < cluster.k; i++)

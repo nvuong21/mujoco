@@ -700,6 +700,7 @@ void mjXWriter::Option(XMLElement* root) {
   WriteAttrInt(section, "mpr_iterations", model->option.mpr_iterations, opt.mpr_iterations);
   WriteAttrInt(section, "reduce_contact", model->option.reduce_contact, opt.reduce_contact);
   WriteAttrInt(section, "kmeans_iterations", model->option.kmeans_iterations, opt.kmeans_iterations);
+  WriteAttrInt(section, "kmeans_init_random", model->option.kmeans_init_random, opt.kmeans_init_random);
   WriteAttrInt(section, "kmeans_cluster", model->option.kmeans_cluster, opt.kmeans_cluster);
   WriteAttr(section, "kmeans_scale_normal", 1, &model->option.kmeans_scale_normal, &opt.kmeans_scale_normal);
 
