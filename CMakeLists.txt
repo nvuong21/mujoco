@@ -28,7 +28,7 @@ set(MSVC_INCREMENTAL_DEFAULT ON)
 
 project(
   mujoco
-  VERSION 2.2.0
+  VERSION 2.2.1
   DESCRIPTION "MuJoCo Physics Simulator"
   HOMEPAGE_URL "https://mujoco.org"
 )
@@ -159,11 +159,9 @@ endif()
 if(BUILD_TESTING AND MUJOCO_BUILD_TESTS)
   enable_testing()
   add_subdirectory(test)
-endif()
-
-if(BUILD_TESTING AND MUJOCO_TEST_PYTHON_UTIL)
-  enable_testing()
-  add_subdirectory(python/mujoco/util)
+  if(MUJOCO_TEST_PYTHON_UTIL)
+    add_subdirectory(python/mujoco/util)
+  endif()
 endif()
 
 if(NOT (APPLE AND MUJOCO_BUILD_MACOS_FRAMEWORKS))
