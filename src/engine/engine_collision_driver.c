@@ -367,13 +367,16 @@ static void reduce_cluster(mjData* d, kmeansCluster* cluster, int start_idx, int
   //   d->contact[i].cluster=1;
   // }
   if (end_idx == -1) end_idx=d->ncon;
-  mjtNum max_dist[cluster->k];
+  // mjtNum max_dist[cluster->k];
+  // closest point to cluster center
+  mjtNum closest[cluster->k];
   int best_ids[cluster->k];
   int num_cons_per_cluster[cluster->k];
-  mju_zero(max_dist,cluster->k);
+  // mju_zero(max_dist,cluster->k);
   for (size_t i = 0; i < cluster->k; i++)
   {
     num_cons_per_cluster[i]=0;
+    closest[i]=mjMAXVAL;
   }
   
 
@@ -384,8 +387,16 @@ static void reduce_cluster(mjData* d, kmeansCluster* cluster, int start_idx, int
     d->contact[i].cluster = cluster_idx;
     d->contact[i].reduce = 1; // reduce contact in cluster
     num_cons_per_cluster[cluster_idx]+=1;
-    if (mju_abs(d->contact[i].dist)>=max_dist[cluster_idx]){
-      max_dist[cluster_idx]=d->contact[i].dist;
+    // if (mju_abs(d->contact[i].dist)>=max_dist[cluster_idx]){
+    //   max_dist[cluster_idx]=d->contact[i].dist;
+    //   best_ids[cluster_idx]=i;
+    // }
+    // 3 - contact normal
+    mjtNum dvec[cluster->pnt_dim];
+    mju_sub(dvec, cluster->pnt_loc + (i-start_idx) * cluster->pnt_dim, cluster->centers + cluster_idx * cluster->pnt_dim, cluster->pnt_dim);
+    mjtNum d = mju_norm(dvec, cluster->pnt_dim);
+    if (d<closest[cluster_idx]){
+      closest[cluster_idx]=d;
       best_ids[cluster_idx]=i;
     }
   }
