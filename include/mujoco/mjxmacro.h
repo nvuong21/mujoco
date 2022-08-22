@@ -43,10 +43,11 @@
     X( int,     mpr_iterations    ) \
     X( int,     disableflags      ) \
     X( int,     enableflags       ) \
-    X( int,     reduce_contact   )  \
-    X( int,     kmeans_iterations   )  \
-    X( int,     kmeans_init_random   )  \
-    X( int,     kmeans_cluster   )
+    X( int,     reduce_contact    ) \
+    X( int,     kmeans_iterations ) \
+    X( int,     kmeans_init_random) \
+    X( int,     kmeans_cluster    ) \
+    X( int,     scale_solref      ) \
 
 
 #define MJOPTION_SCALARS            \

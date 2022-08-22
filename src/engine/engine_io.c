@@ -137,6 +137,7 @@ void mj_defaultOption(mjOption* opt) {
   opt->kmeans_init_random = 0;
   opt->kmeans_cluster = 8;
   opt->kmeans_scale_normal = 0.1;
+  opt->scale_solref = 0;
 }
 
 

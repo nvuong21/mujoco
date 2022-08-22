@@ -414,6 +414,7 @@ struct mjOption_ {                // physics options
   int kmeans_iterations;
   int kmeans_init_random;          // 0: use kmeans plus plus, 1: use random initialization
   int kmeans_cluster;              // number of clusters
+  int scale_solref;                // post-processing - scale contact stiffness based on total stiffness
   mjtNum kmeans_scale_normal;      // in (0, 1), used to scale down normal components for each contact during kmeans
 };
 typedef struct mjOption_ mjOption;

@@ -703,6 +703,7 @@ void mjXWriter::Option(XMLElement* root) {
   WriteAttrInt(section, "kmeans_init_random", model->option.kmeans_init_random, opt.kmeans_init_random);
   WriteAttrInt(section, "kmeans_cluster", model->option.kmeans_cluster, opt.kmeans_cluster);
   WriteAttr(section, "kmeans_scale_normal", 1, &model->option.kmeans_scale_normal, &opt.kmeans_scale_normal);
+  WriteAttrInt(section, "scale_solref", model->option.scale_solref, opt.scale_solref);
 
   // write disable/enable flags if any of them are set; invert while writing
   if (model->option.disableflags || model->option.enableflags) {

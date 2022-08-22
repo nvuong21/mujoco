@@ -62,6 +62,563 @@ mjfCollision mjCOLLISIONFUNC[mjNGEOMTYPES][mjNGEOMTYPES] = {
 };
 
 
+// ---- SCALING STIFFNESS
+
+// LU decomposition
+static void lu_decomp(mjtNum* L, mjtNum* U, const mjtNum* mat, int size){
+  mju_zero(L, size*size);
+  mju_zero(U, size*size);
+  // // source https://www.geeksforgeeks.org/doolittle-algorithm-lu-decomposition/
+  // // Decomposing matrix into Upper and Lower
+  // // triangular matrix
+  // for (int i = 0; i < size; i++)
+  // {
+  //   // Upper Triangular
+  //   for (int k = i; k < size; k++)
+  //   {
+  //     // Summation of L(i, j) * U(j, k)
+  //     int sum = 0;
+  //     for (int j = 0; j < i; j++)
+  //       sum += (L[i * size + j] * U[j * size + k]);
+
+  //     // Evaluating U(i, k)
+  //     U[i * size + k] = mat[i * size + k] - sum;
+  //   }
+
+  //   // Lower Triangular
+  //   for (int k = i; k < size; k++)
+  //   {
+  //     if (i == k)
+  //       L[i * size + i] = 1; // Diagonal as 1
+  //     else
+  //     {
+  //       // Summation of L(k, j) * U(j, i)
+  //       int sum = 0;
+  //       for (int j = 0; j < i; j++)
+  //         sum += (L[k * size + j] * U[j * size + i]);
+
+  //       // Evaluating L(k, i)
+  //       L[k * size + i] = (mat[k * size + i] - sum) / U[i * size + i];
+  //     }
+  //   }
+  // }
+
+  // Computation oof L and U matrices
+  // source https://www.tutorialspoint.com/cplusplus-program-to-perform-lu-decomposition-of-any-matrix
+  for (size_t i = 0; i < size; i++) {
+      for (size_t j = 0; j < size; j++) {
+         if (j < i)
+         L[j*size+i] = 0;
+         else {
+            L[j*size+i] = mat[j*size+i];
+            for (size_t k = 0; k < i; k++) {
+               L[j*size+i] = L[j*size+i] - L[j*size+k] * U[k*size+i];
+            }
+         }
+      }
+      for (size_t j = 0; j < size; j++) {
+         if (j < i)
+         U[i*size+j] = 0;
+         else if (j == i)
+         U[i*size+j] = 1;
+         else {
+            U[i*size+j] = mat[i*size+j] / L[i*size+i];
+            for (size_t k = 0; k < i; k++) {
+               U[i*size+j] = U[i*size+j] - ((L[i*size+k] * U[k*size+j]) / L[i*size+i]);
+            }
+         }
+      }
+   }
+}
+
+static void solve_linear(mjtNum* res, const mjtNum* A, const mjtNum* b, int size){
+  // lu decomposition
+  mjtNum L[size*size];
+  mjtNum U[size*size];
+  lu_decomp(L, U, A, size);
+  // print_array_mjtnum(L, size*size, "L");
+  // print_array_mjtnum(U, size*size, "U");
+  // copy if source and destination are different
+  if (res!=b) {
+    mju_copy(res, b, size);
+  }
+  // print_array_mjtnum(res, size, "res before forward");
+  // forward substitution
+  for (int i=0; i<size; i++) {
+    if (i) {
+      res[i] -= mju_dot(L+i*size, res, i);
+    }
+
+    // diagonal
+    res[i] /= L[i*(size+1)];
+  }
+  // print_array_mjtnum(res, size, "res after forward");
+  // backward substitution: solve L'*res = res
+  for (int i=size-1; i>=0; i--) {
+    if (i<size-1) {
+      for (int j=i+1; j<size; j++) {
+        res[i] -= U[j+i*size] * res[j];
+      }
+    }
+    // diagonal
+    res[i] /= U[i*(size+1)];
+  }
+  // print_array_mjtnum(res, size, "res after backward");
+}
+
+static void scale_solref(const mjModel* m, mjData* d, int start_idx, int end_idx){
+  // ---------- check stiffness by projecting all contacts to a reference body frame,
+  if (m->opt.scale_solref){
+    if (end_idx==-1) end_idx=d->ncon;
+    // calculate ncon
+    int ncon=0;
+    for (size_t i = start_idx; i < end_idx; i++)
+    {
+      if (!d->contact[i].reduce) ncon+=1;
+    }
+
+    // if 1 of 2 bodies are fixed, then the reference body is set to the moving body
+    // else, choose body with smaller id
+    int b1 = m->geom_bodyid[d->contact[start_idx].geom1];
+    int b2 = m->geom_bodyid[d->contact[start_idx].geom2];
+    // reference body
+    int br;
+    // TODO this doesn't work better way to check?
+    if (m->body_simple[b1])
+    {
+      // printf("set reference body id to %d", b2);
+      br = b2;
+    }
+    else if (m->body_simple[b2])
+    {
+      // printf("set reference body id to %d", b1);
+      br = b1;
+    }
+    else
+    {
+      br = mju_min(b1, b2);
+    }
+    // project stiffness to reference body frame
+    mjtNum refpos[3], refmat[9];
+    mju_copy3(refpos, d->xpos + 3 * br);
+    mju_copy(refmat, d->xmat + 9 * br, 9);
+
+    mjtNum relpos[3], normal[3], norm_proj_mat[9], relpos_cross[9], jac[18], kp[36], kpi[36];
+    mjtNum kx[ncon], ky[ncon], kz[ncon];
+    mju_zero(kp, 36);
+    mju_zero(kx, ncon);
+    mju_zero(ky, ncon);
+    mju_zero(kz, ncon);
+    int id = 0;
+    for (size_t i = start_idx; i < end_idx; i++)
+    {
+      if (!d->contact[i].reduce)
+      {
+        mju_sub3(relpos, d->contact[i].pos, refpos);
+        mju_rotVecMatT(relpos, relpos, refmat);
+        // normal
+        mju_copy3(normal, d->contact[i].frame);
+        // jacobian in body frame
+        // jpos = I, jrot = [relpos]x
+        mju_zero(jac, 18);
+        jac[0] = 1;
+        jac[7] = 1;
+        jac[14] = 1;
+        jac[4] = relpos[2];
+        jac[5] = -relpos[1];
+        jac[9] = -relpos[2];
+        jac[11] = relpos[0];
+        jac[15] = relpos[1];
+        jac[16] = -relpos[0];
+        // test print
+        // print_array_mjtnum(relpos,3,"relpos");
+        // print_array_mjtnum(jac, 18, "jac");
+        // form cross product matrix
+        mju_zero(relpos_cross, 9);
+        relpos_cross[1] = -relpos[2];
+        relpos_cross[2] = relpos[1];
+        relpos_cross[3] = relpos[2];
+        relpos_cross[5] = -relpos[0];
+        relpos_cross[6] = -relpos[1];
+        relpos_cross[7] = relpos[0];
+
+        // projection matrix
+        for (size_t j = 0; j < 3; j++)
+        {
+          for (size_t k = 0; k < 3; k++)
+          {
+            norm_proj_mat[j + k * 3] = normal[j] * normal[k];
+          }
+        }
+        // test print
+        // print_array_mjtnum(normal, 3, "normal");
+        // print_array_mjtnum(norm_proj_mat, 9, "norm_proj_mat");
+        // form stiffness matrix
+        mju_mulMatMat(kpi, norm_proj_mat, jac, 3, 3, 6);
+        mju_mulMatMat(kpi + 18, relpos_cross, kpi, 3, 3, 6);
+        mju_add(kp, kp, kpi, 36);
+        // test print
+        // print_array_mjtnum(kpi, 36, "kp");
+        // store stiffness
+        kx[id] = kpi[0];
+        ky[id] = kpi[7];
+        kz[id] = kpi[14];
+        id += 1;
+      }
+    }
+    // print_array_mjtnum(kp, 36, "kp");
+
+    // if stiffness is good then pass
+    if (kp[0] <= 2 && kp[7] <= 2 && kp[14] <= 2)
+    {
+      return;
+    }
+
+    // --------- OPTIMAL SCALE
+    // ---- OLD APPROACH
+    // normalize kx,ky,kz
+    // mjtNum kx_length= mju_normalize(kx, cluster->k);
+    // mjtNum ky_length= mju_normalize(ky, cluster->k);
+    // mjtNum kz_length= mju_normalize(kz, cluster->k);
+
+    // // calculate weight for each contact to limit stiffness along x,y,z of body
+    // mjtNum weight[cluster->k], one_vec[cluster->k];
+    // mjtNum max_dist=-99;
+    // int axis=0;
+
+    // for (size_t i = 0; i < cluster->k; i++)
+    // {
+    //   one_vec[i]=1;
+    // }
+
+    // if (kp[0] > 2){
+    //   mjtNum tmp[cluster->k];
+    //   mju_copy(tmp, one_vec, cluster->k);
+    //   tmp[0] -= 2/(kx[0]*kx_length);
+    //   mjtNum dist=mju_abs(mju_dot(tmp, kx, cluster->k));
+    //   if (dist>max_dist){
+    //     max_dist=dist;
+    //   }
+    // }
+
+    // if (kp[7] > 2){
+    //   mjtNum tmp[cluster->k];
+    //   mju_copy(tmp, one_vec, cluster->k);
+    //   tmp[0] -= 2/(ky[0]*ky_length);
+    //   mjtNum dist=mju_abs(mju_dot(tmp, ky, cluster->k));
+    //   if (dist>max_dist){
+    //     max_dist=dist;
+    //     axis=1;
+    //   }
+    // }
+
+    // if (kp[14] > 2){
+    //   mjtNum tmp[cluster->k];
+    //   mju_copy(tmp, one_vec, cluster->k);
+    //   tmp[0] -= 2/(kz[0]*kz_length);
+    //   mjtNum dist=mju_abs(mju_dot(tmp, kz, cluster->k));
+    //   if (dist>max_dist){
+    //     max_dist=dist;
+    //     axis=2;
+    //   }
+    // }
+
+    // mjtNum normal_scale[cluster->k];
+    // if (axis==0){
+    //   mju_scl(normal_scale, kx, max_dist, cluster->k);
+    // }
+    // else if (axis==1)
+    // {
+    //   mju_scl(normal_scale, ky, max_dist, cluster->k);
+    // }
+    // else{
+    //   mju_scl(normal_scale, kz, max_dist, cluster->k);
+    // }
+
+    // mju_sub(weight, one_vec, normal_scale, cluster->k);
+    // print_array_mjtnum(weight, cluster->k, "new weight");
+    // scale solref
+    // id=0;
+    // for (size_t i = start_idx; i < end_idx; i++)
+    // {
+    //   if (!d->contact[i].reduce){
+    //     if (d->contact[i].solref[0]<0){
+    //       d->contact[i].solref[0] *= weight[id];
+    //     }
+    //     else{
+    //       d->contact[i].solref[0] /= mju_sqrt(weight[id]);
+    //     }
+    //   id+=1;
+    //   }
+    // }
+    // ----
+
+    // ---- NEW APPROACH BY SOLVING A QP
+    mjtNum weight[ncon], one_vec[ncon];
+    for (size_t i = 0; i < ncon; i++)
+    {
+      one_vec[i] = 1;
+    }
+
+    // finding equality constriasnts
+    int num_cons = 0;
+    int constraint_violated[3];
+    for (size_t i = 0; i < 3; i++)
+    {
+      if (kp[i * 7] > 2)
+      {
+        constraint_violated[i] = 1;
+        num_cons += 1;
+      }
+      else
+      {
+        constraint_violated[i] = 0;
+      }
+    }
+
+    // form LP for optimality condition
+    // source https://see.stanford.edu/materials/lsoeldsee263/08-min-norm.pdf
+    // int ncon = cluster->k;
+    int size = ncon + num_cons;
+    mjtNum A[size * size], b[size];
+    mju_copy(b, one_vec, ncon);
+    int k = 0;
+    for (size_t i = 0; i < 3; i++)
+    {
+      if (constraint_violated[i])
+      {
+        b[ncon + k] = 2; // 2 is maximum scale for stiffness
+        k += 1;
+      }
+    }
+
+    mju_zero(A, size * size);
+    // diagonal of upper left block
+    for (size_t i = 0; i < ncon; i++)
+    {
+      A[i * (size + 1)] = 1;
+    }
+    // upper right and lower left block
+    k = 0;
+    mjtNum tmp;
+    for (size_t i = 0; i < 3; i++)
+    {
+      if (constraint_violated[i])
+      {
+
+        for (size_t j = 0; j < ncon; j++)
+        {
+          if (i == 0)
+          {
+            tmp = kx[j];
+          }
+          else if (i == 1)
+          {
+            tmp = ky[j];
+          }
+          else
+          {
+            tmp = kz[j];
+          }
+          A[j * size + ncon + k] = tmp;
+          A[j + size * (ncon + k)] = tmp;
+        }
+        k += 1;
+      }
+    }
+    // solve by Cholesky factorization. Doesn't work because Cholesky factorization
+    // is only for positive definite matrix
+    // mjtNum res[size];
+    // print_array_mjtnum(A, size*size, "A before cholfactor");
+    // int rank=mju_cholFactor(A, size, mjMINVAL);
+    // printf("Arank %d, size %d", rank, size);
+    // mju_cholSolve(res, A, b, size);
+    // mju_copy(weight, res, ncon);
+    // print_array_mjtnum(A, size*size, "A after cholfactor");
+    // print_array_mjtnum(b, size, "b");
+    // print_array_mjtnum(weight, cluster->k, "new weight");
+
+    // solve by LU
+    mjtNum res[size];
+    solve_linear(res, A, b, size);
+    mju_copy(weight, res, ncon);
+    // clamp weight in [0, 1]
+    for (size_t i = 0; i < ncon; i++)
+    {
+      if (weight[i] < mjMINVAL)
+        weight[i] = mjMINVAL;
+      if (weight[i] > 1)
+        weight[i] = 1;
+    }
+    // scale solref
+    id=0;
+    for (size_t i = start_idx; i < end_idx; i++)
+    {
+      if (!d->contact[i].reduce){
+        if (d->contact[i].solref[0]<0){
+          // printf("before scaling stiffness %f, damping %f", d->contact[i].solref[0], d->contact[i].solref[1]);
+          d->contact[i].solref[0] *= weight[id];
+          // recalculate damping
+          d->contact[i].solref[1] = -2*mju_sqrt(-d->contact[i].solref[0]);
+          // d->contact[i].solref[1] *= weight[id]/2;
+          // printf("after scaling stiffness %f, damping %f", d->contact[i].solref[0], d->contact[i].solref[1]);
+        }
+        else{
+          d->contact[i].solref[0] /= mju_sqrt(weight[id]);
+        }
+      id+=1;
+      }
+    }
+
+    // print_array_mjtnum(weight, ncon, "new weight");
+
+    // ----
+
+    // // recalculate stiffness for testing
+    // id=0;
+    // mju_zero(kp, 36);
+    // for (size_t i = start_idx; i < end_idx; i++)
+    // {
+    //   if (!d->contact[i].reduce){
+    //     mju_sub3(relpos, d->contact[i].pos, refpos);
+    //     mju_rotVecMatT(relpos, relpos, refmat);
+    //     // normal
+    //     mju_copy3(normal, d->contact[i].frame);
+    //     // jacobian in body frame
+    //     // jpos = I, jrot = [relpos]x
+    //     mju_zero(jac, 18);
+    //     jac[0]=1;
+    //     jac[7]=1;
+    //     jac[14]=1;
+    //     jac[4]=relpos[2];
+    //     jac[5]=-relpos[1];
+    //     jac[9]=-relpos[2];
+    //     jac[11]=relpos[0];
+    //     jac[15]=relpos[1];
+    //     jac[16]=-relpos[0];
+    //     // test print
+    //     // print_array_mjtnum(relpos,3,"relpos");
+    //     // print_array_mjtnum(jac, 18, "jac");
+    //     // form cross product matrix
+    //     mju_zero(relpos_cross, 9);
+    //     relpos_cross[1]=-relpos[2];
+    //     relpos_cross[2]=relpos[1];
+    //     relpos_cross[3]=relpos[2];
+    //     relpos_cross[5]=-relpos[0];
+    //     relpos_cross[6]=-relpos[1];
+    //     relpos_cross[7]=relpos[0];
+
+    //     // projection matrix
+    //     for (size_t j = 0; j < 3; j++)
+    //     {
+    //       for (size_t k = 0; k < 3; k++)
+    //       {
+    //         norm_proj_mat[j+k*3]=normal[j]*normal[k];
+    //       }
+    //     }
+    //     // test print
+    //     // print_array_mjtnum(normal, 3, "normal");
+    //     // print_array_mjtnum(norm_proj_mat, 9, "norm_proj_mat");
+    //     // form stiffness matrix
+    //     mju_mulMatMat(kpi, norm_proj_mat, jac, 3,3,6);
+    //     mju_mulMatMat(kpi+18,relpos_cross, kpi,3,3,6);
+    //     mju_scl(kpi, kpi, weight[id], 36);
+    //     mju_add(kp, kp, kpi, 36);
+    //     // test print
+    //     // print_array_mjtnum(kpi, 36, "kp");
+    //     // store stiffness
+    //     kx[id] = kpi[0];
+    //     ky[id] = kpi[7];
+    //     kz[id] = kpi[14];
+    //     id+=1;
+    //   }
+    // }
+    // print_array_mjtnum(kp, 36, "kp_new");
+    // ---------
+
+    // --------- NAIVE SCALE
+    // mjtNum scale=mju_max(kp[0], kp[7]);
+    // scale=mju_max(scale, kp[14]);
+    // scale = 2/scale;
+    // id=0;
+    // for (size_t i = start_idx; i < end_idx; i++)
+    // {
+    //   if (!d->contact[i].reduce){
+    //     if (d->contact[i].solref[0]<0){
+    //       d->contact[i].solref[0] *= scale;
+    //     }
+    //     else{
+    //       d->contact[i].solref[0] /= mju_sqrt(scale);
+    //     }
+    //   id+=1;
+    //   }
+    // }
+
+    // // test re-calculate stiffness
+    // // id=0;
+    // // mju_zero(kp, 36);
+    // // for (size_t i = start_idx; i < end_idx; i++)
+    // // {
+    // //   if (!d->contact[i].reduce){
+    // //     mju_sub3(relpos, d->contact[i].pos, refpos);
+    // //     mju_rotVecMatT(relpos, relpos, refmat);
+    // //     // normal
+    // //     mju_copy3(normal, d->contact[i].frame);
+    // //     // jacobian in body frame
+    // //     // jpos = I, jrot = [relpos]x
+    // //     mju_zero(jac, 18);
+    // //     jac[0]=1;
+    // //     jac[7]=1;
+    // //     jac[14]=1;
+    // //     jac[4]=relpos[2];
+    // //     jac[5]=-relpos[1];
+    // //     jac[9]=-relpos[2];
+    // //     jac[11]=relpos[0];
+    // //     jac[15]=relpos[1];
+    // //     jac[16]=-relpos[0];
+    // //     // test print
+    // //     // print_array_mjtnum(relpos,3,"relpos");
+    // //     // print_array_mjtnum(jac, 18, "jac");
+    // //     // form cross product matrix
+    // //     mju_zero(relpos_cross, 9);
+    // //     relpos_cross[1]=-relpos[2];
+    // //     relpos_cross[2]=relpos[1];
+    // //     relpos_cross[3]=relpos[2];
+    // //     relpos_cross[5]=-relpos[0];
+    // //     relpos_cross[6]=-relpos[1];
+    // //     relpos_cross[7]=relpos[0];
+
+    // //     // projection matrix
+    // //     for (size_t j = 0; j < 3; j++)
+    // //     {
+    // //       for (size_t k = 0; k < 3; k++)
+    // //       {
+    // //         norm_proj_mat[j+k*3]=normal[j]*normal[k];
+    // //       }
+    // //     }
+    // //     // test print
+    // //     // print_array_mjtnum(normal, 3, "normal");
+    // //     // print_array_mjtnum(norm_proj_mat, 9, "norm_proj_mat");
+    // //     // form stiffness matrix
+    // //     mju_mulMatMat(kpi, norm_proj_mat, jac, 3,3,6);
+    // //     mju_mulMatMat(kpi+18,relpos_cross, kpi,3,3,6);
+    // //     mju_scl(kpi, kpi, scale, 36);
+    // //     mju_add(kp, kp, kpi, 36);
+    // //     // test print
+    // //     // print_array_mjtnum(kpi, 36, "kp");
+    // //     // store stiffness
+    // //     kx[id] = kpi[0];
+    // //     ky[id] = kpi[7];
+    // //     kz[id] = kpi[14];
+    // //     id+=1;
+    // //   }
+    // // }
+    // // print_array_mjtnum(kp, 36, "kp_new");
+    // ----------
+  }
+}
+
+
 
 //----------------------------- collision detection entry point ------------------------------------
 
@@ -356,17 +913,10 @@ static int can_collide(const mjModel* m, int b) {
   return 0;
 }
 
-
-
 // TODO
-static void reduce_cluster(mjData* d, kmeansCluster* cluster, int start_idx, int end_idx){
-  // NOTE test assign cluster
-  // int half_ncon=d->ncon/2;
-  // for (size_t i = 0; i < half_ncon; i++)
-  // {
-  //   d->contact[i].cluster=1;
-  // }
+static void reduce_cluster(const mjModel* m, mjData* d, kmeansCluster* cluster, int start_idx, int end_idx){
   if (end_idx == -1) end_idx=d->ncon;
+  // max penetration depth
   // mjtNum max_dist[cluster->k];
   // closest point to cluster center
   mjtNum closest[cluster->k];
@@ -380,18 +930,21 @@ static void reduce_cluster(mjData* d, kmeansCluster* cluster, int start_idx, int
   }
   
 
-  // udpate cluster information, record max penetration depth per cluster
+  // udpate cluster information,
+  // record max penetration depth per cluster/closest normal
   for (size_t i = start_idx; i < end_idx; i++)
   {
     int cluster_idx=cluster->pnt_cluster[i - start_idx];
     d->contact[i].cluster = cluster_idx;
     d->contact[i].reduce = 1; // reduce contact in cluster
     num_cons_per_cluster[cluster_idx]+=1;
+    // record max penetration depth
     // if (mju_abs(d->contact[i].dist)>=max_dist[cluster_idx]){
     //   max_dist[cluster_idx]=d->contact[i].dist;
     //   best_ids[cluster_idx]=i;
     // }
     // 3 - contact normal
+    // record closest contact normal
     mjtNum dvec[cluster->pnt_dim];
     mju_sub(dvec, cluster->pnt_loc + (i-start_idx) * cluster->pnt_dim, cluster->centers + cluster_idx * cluster->pnt_dim, cluster->pnt_dim);
     mjtNum d = mju_norm(dvec, cluster->pnt_dim);
@@ -401,13 +954,15 @@ static void reduce_cluster(mjData* d, kmeansCluster* cluster, int start_idx, int
     }
   }
   // print_array_int(best_ids, cluster->k, "cluster_idx");
-  // choose contact with largest penetration depth
+  // choose contact with largest penetration depth/closest contact normal
   for (size_t i = 0; i < cluster->k; i++)
   {
     if (num_cons_per_cluster[i]>0){
       d->contact[best_ids[i]].reduce = 0;
     }
   }
+  // scale stiffness
+  scale_solref(m,d,start_idx, -1);
 }
 
 // broadphase collision detector
@@ -995,7 +1550,7 @@ void mj_clusterContacts(const mjModel* m, mjData* d, int start_idx, int end_idx)
   config.max_ite=m->opt.kmeans_iterations;
   mj_kmeans(&cluster, &config);
   // reduce contacts from clustering result and add to mjdata
-  reduce_cluster(d, &cluster, start_idx, -1);
+  reduce_cluster(m, d, &cluster, start_idx, -1);
   // printf("Number of contacts after clustering ")
  
   if (cluster.result == KMEANS_ERROR){
