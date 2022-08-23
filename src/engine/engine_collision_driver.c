@@ -199,11 +199,12 @@ static void scale_solref(const mjModel* m, mjData* d, int start_idx, int end_idx
       br = mju_min(b1, b2);
     }
     // project stiffness to reference body frame
+    const mjtNum bound=2;
     mjtNum refpos[3], refmat[9];
     mju_copy3(refpos, d->xpos + 3 * br);
     mju_copy(refmat, d->xmat + 9 * br, 9);
 
-    mjtNum relpos[3], normal[3], norm_proj_mat[9], relpos_cross[9], jac[18], kp[36], kpi[36];
+    mjtNum relpos[3], normal[3], proj_mat[9], relpos_cross[9], jac[18], kp[36], kpi[36];
     mjtNum kx[ncon], ky[ncon], kz[ncon];
     mju_zero(kp, 36);
     mju_zero(kx, ncon);
@@ -247,14 +248,14 @@ static void scale_solref(const mjModel* m, mjData* d, int start_idx, int end_idx
         {
           for (size_t k = 0; k < 3; k++)
           {
-            norm_proj_mat[j + k * 3] = normal[j] * normal[k];
+            proj_mat[j + k * 3] = normal[j] * normal[k];
           }
         }
         // test print
         // print_array_mjtnum(normal, 3, "normal");
-        // print_array_mjtnum(norm_proj_mat, 9, "norm_proj_mat");
+        // print_array_mjtnum(proj_mat, 9, "proj_mat");
         // form stiffness matrix
-        mju_mulMatMat(kpi, norm_proj_mat, jac, 3, 3, 6);
+        mju_mulMatMat(kpi, proj_mat, jac, 3, 3, 6);
         mju_mulMatMat(kpi + 18, relpos_cross, kpi, 3, 3, 6);
         mju_add(kp, kp, kpi, 36);
         // test print
@@ -269,7 +270,7 @@ static void scale_solref(const mjModel* m, mjData* d, int start_idx, int end_idx
     // print_array_mjtnum(kp, 36, "kp");
 
     // if stiffness is good then pass
-    if (kp[0] <= 2 && kp[7] <= 2 && kp[14] <= 2)
+    if (kp[0] <= bound && kp[7] <= bound && kp[14] <= bound)
     {
       return;
     }
@@ -365,7 +366,7 @@ static void scale_solref(const mjModel* m, mjData* d, int start_idx, int end_idx
     int constraint_violated[3];
     for (size_t i = 0; i < 3; i++)
     {
-      if (kp[i * 7] > 2)
+      if (kp[i * 7] > bound)
       {
         constraint_violated[i] = 1;
         num_cons += 1;
@@ -387,7 +388,7 @@ static void scale_solref(const mjModel* m, mjData* d, int start_idx, int end_idx
     {
       if (constraint_violated[i])
       {
-        b[ncon + k] = 2; // 2 is maximum scale for stiffness
+        b[ncon + k] = bound; // 2 is maximum scale for stiffness
         k += 1;
       }
     }
@@ -460,8 +461,9 @@ static void scale_solref(const mjModel* m, mjData* d, int start_idx, int end_idx
           d->contact[i].solref[0] *= weight[id];
           // recalculate damping
           d->contact[i].solref[1] = -2*mju_sqrt(-d->contact[i].solref[0]);
-          // d->contact[i].solref[1] *= weight[id]/2;
-          // printf("after scaling stiffness %f, damping %f", d->contact[i].solref[0], d->contact[i].solref[1]);
+          // d->contact[i].solref[1] *= weight[id];
+          // d->contact[i].solref[1] *= 5.0/ncon;
+          // printf("after scaling stiffness %f, damping %f\n", d->contact[i].solref[0], d->contact[i].solref[1]);
         }
         else{
           d->contact[i].solref[0] /= mju_sqrt(weight[id]);
@@ -513,14 +515,14 @@ static void scale_solref(const mjModel* m, mjData* d, int start_idx, int end_idx
     //     {
     //       for (size_t k = 0; k < 3; k++)
     //       {
-    //         norm_proj_mat[j+k*3]=normal[j]*normal[k];
+    //         proj_mat[j+k*3]=normal[j]*normal[k];
     //       }
     //     }
     //     // test print
     //     // print_array_mjtnum(normal, 3, "normal");
-    //     // print_array_mjtnum(norm_proj_mat, 9, "norm_proj_mat");
+    //     // print_array_mjtnum(proj_mat, 9, "proj_mat");
     //     // form stiffness matrix
-    //     mju_mulMatMat(kpi, norm_proj_mat, jac, 3,3,6);
+    //     mju_mulMatMat(kpi, proj_mat, jac, 3,3,6);
     //     mju_mulMatMat(kpi+18,relpos_cross, kpi,3,3,6);
     //     mju_scl(kpi, kpi, weight[id], 36);
     //     mju_add(kp, kp, kpi, 36);
@@ -593,14 +595,14 @@ static void scale_solref(const mjModel* m, mjData* d, int start_idx, int end_idx
     // //     {
     // //       for (size_t k = 0; k < 3; k++)
     // //       {
-    // //         norm_proj_mat[j+k*3]=normal[j]*normal[k];
+    // //         proj_mat[j+k*3]=normal[j]*normal[k];
     // //       }
     // //     }
     // //     // test print
     // //     // print_array_mjtnum(normal, 3, "normal");
-    // //     // print_array_mjtnum(norm_proj_mat, 9, "norm_proj_mat");
+    // //     // print_array_mjtnum(proj_mat, 9, "proj_mat");
     // //     // form stiffness matrix
-    // //     mju_mulMatMat(kpi, norm_proj_mat, jac, 3,3,6);
+    // //     mju_mulMatMat(kpi, proj_mat, jac, 3,3,6);
     // //     mju_mulMatMat(kpi+18,relpos_cross, kpi,3,3,6);
     // //     mju_scl(kpi, kpi, scale, 36);
     // //     mju_add(kp, kp, kpi, 36);
@@ -747,6 +749,8 @@ void mj_collision(const mjModel* m, mjData* d) {
             // mj_addContacts(m, d, cluster_con, ncon_cluster);
           }
         }
+        // scale stiffness
+        scale_solref(m,d,start_idx, -1);
         // else {
         //   if (total_ncon > 0){
         //     mj_addContacts(m, d, total_con, total_ncon);
@@ -961,8 +965,6 @@ static void reduce_cluster(const mjModel* m, mjData* d, kmeansCluster* cluster, 
       d->contact[best_ids[i]].reduce = 0;
     }
   }
-  // scale stiffness
-  scale_solref(m,d,start_idx, -1);
 }
 
 // broadphase collision detector
